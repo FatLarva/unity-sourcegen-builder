@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.0.2] - 2026-10-24
+
+### Fixed
+- Resolve Unity package paths to physical directories for Git, local, and embedded packages
+- Use the resolved source root consistently for validation, builds, and DLL copying without changing profiles
+- Log the resolved source directory and report DLL copy failures as failed builds
+
 ## [1.0.1] - 2026-10-23
 
 ### Fixed

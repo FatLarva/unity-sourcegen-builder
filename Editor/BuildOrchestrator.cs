@@ -17,6 +17,7 @@ namespace SourceGenBuilder.Editor
         {
             public SourceGeneratorProfile Profile;
             public BuildTarget Target;
+            public string SourceRoot;
         }
 
         // ── State ───────────────────────────────────────────────────────
@@ -101,15 +102,24 @@ namespace SourceGenBuilder.Editor
                     ? profile.name
                     : profile.DisplayName;
 
-                string sourceRoot = PathUtils.Normalize(profile.SourceRoot);
-                if (string.IsNullOrEmpty(sourceRoot))
+                if (string.IsNullOrWhiteSpace(profile.SourceRoot))
                 {
                     _log.AppendTimestamped($"ERROR: [{profileName}] Source root is empty. Skipping.");
                     hasErrors = true;
                     continue;
                 }
 
-                string sourceRootAbs = Path.Combine(projectRoot, sourceRoot);
+                string sourceRootAbs;
+                try
+                {
+                    sourceRootAbs = PathUtils.ResolveProjectPath(profile.SourceRoot, projectRoot);
+                }
+                catch (Exception ex) when (ex is ArgumentException || ex is IOException || ex is NotSupportedException)
+                {
+                    _log.AppendTimestamped($"ERROR: [{profileName}] Invalid source root '{profile.SourceRoot}': {ex.Message}");
+                    hasErrors = true;
+                    continue;
+                }
                 if (!Directory.Exists(sourceRootAbs))
                 {
                     _log.AppendTimestamped($"ERROR: [{profileName}] Source root directory not found: {sourceRootAbs}");
@@ -119,7 +129,7 @@ namespace SourceGenBuilder.Editor
 
                 foreach (var dep in profile.Dependencies)
                 {
-                    string error = PathUtils.ValidateBuildTarget(dep, profileName, sourceRoot, projectRoot);
+                    string error = PathUtils.ValidateBuildTargetAtRoot(dep, profileName, sourceRootAbs);
                     if (error != null)
                     {
                         _log.AppendTimestamped($"ERROR: {error}");
@@ -127,11 +137,11 @@ namespace SourceGenBuilder.Editor
                         continue;
                     }
 
-                    _buildQueue.Add(new BuildStep { Profile = profile, Target = dep });
+                    _buildQueue.Add(new BuildStep { Profile = profile, Target = dep, SourceRoot = sourceRootAbs });
                 }
 
                 {
-                    string error = PathUtils.ValidateBuildTarget(profile.Generator, profileName, sourceRoot, projectRoot);
+                    string error = PathUtils.ValidateBuildTargetAtRoot(profile.Generator, profileName, sourceRootAbs);
                     if (error != null)
                     {
                         _log.AppendTimestamped($"ERROR: {error}");
@@ -139,7 +149,7 @@ namespace SourceGenBuilder.Editor
                     }
                     else
                     {
-                        _buildQueue.Add(new BuildStep { Profile = profile, Target = profile.Generator });
+                        _buildQueue.Add(new BuildStep { Profile = profile, Target = profile.Generator, SourceRoot = sourceRootAbs });
                     }
                 }
             }
@@ -163,7 +173,7 @@ namespace SourceGenBuilder.Editor
             foreach (var step in _buildQueue)
             {
                 string installPath = PathUtils.Normalize(step.Target.InstallDllPath);
-                if (!File.Exists(Path.Combine(projectRoot, installPath)))
+                if (!File.Exists(PathUtils.ResolveProjectPath(installPath, projectRoot)))
                 {
                     _firstTimeInstalls.Add(installPath);
                 }
@@ -249,7 +259,11 @@ namespace SourceGenBuilder.Editor
             _activeProcess.Dispose();
             _activeProcess = null;
 
-            CopyDll(step);
+            if (!CopyDll(step))
+            {
+                Finish(false);
+                return false;
+            }
 
             _buildIndex++;
 
@@ -291,9 +305,7 @@ namespace SourceGenBuilder.Editor
             }
 
             var step = _buildQueue[_buildIndex];
-            string projectRoot = SourceGenBuilderConstants.ProjectRoot;
-            string sourceRoot = PathUtils.Normalize(step.Profile.SourceRoot);
-            string workDir = PathUtils.CombineNormalized(projectRoot, sourceRoot);
+            string workDir = step.SourceRoot;
             string csprojRel = PathUtils.Normalize(step.Target.CsprojPath);
             string csprojAbs = Path.Combine(workDir, csprojRel);
             string binDir = Path.Combine(Path.GetDirectoryName(csprojAbs)!, "bin");
@@ -312,6 +324,10 @@ namespace SourceGenBuilder.Editor
             };
 
             string dllName = step.Target.DllFileName;
+            if (_buildIndex == 0 || _buildQueue[_buildIndex - 1].Profile != step.Profile)
+            {
+                _log.AppendTimestamped($"Source root: {step.Profile.SourceRoot} → {workDir}");
+            }
             _log.AppendTimestamped($"[{_buildIndex + 1}/{_buildQueue.Count}] dotnet build {Path.GetFileName(csprojRel)} → {dllName} ...");
 
             try
@@ -370,28 +386,35 @@ namespace SourceGenBuilder.Editor
             }
         }
 
-        private void CopyDll(BuildStep step)
+        private bool CopyDll(BuildStep step)
         {
             string projectRoot = SourceGenBuilderConstants.ProjectRoot;
-            string sourceRoot = PathUtils.Normalize(step.Profile.SourceRoot);
             string csprojRel = PathUtils.Normalize(step.Target.CsprojPath);
             string csprojDir = Path.GetDirectoryName(csprojRel) ?? "";
             string dllName = step.Target.DllFileName;
-            string sourcePath = Path.Combine(projectRoot, sourceRoot, csprojDir, "bin", dllName);
+            string sourcePath = Path.Combine(step.SourceRoot, csprojDir, "bin", dllName);
 
             if (!File.Exists(sourcePath))
             {
                 _log.AppendTimestamped($"ERROR: Built DLL not found at: {sourcePath}");
-                return;
+                return false;
             }
 
             string installPath = PathUtils.Normalize(step.Target.InstallDllPath);
-            string destAbs = Path.Combine(projectRoot, installPath);
+            string destAbs = PathUtils.ResolveProjectPath(installPath, projectRoot);
             string destDir = Path.GetDirectoryName(destAbs)!;
-            Directory.CreateDirectory(destDir);
-
-            File.Copy(sourcePath, destAbs, overwrite: true);
+            try
+            {
+                Directory.CreateDirectory(destDir);
+                File.Copy(sourcePath, destAbs, overwrite: true);
+            }
+            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+            {
+                _log.AppendTimestamped($"ERROR: Could not copy '{sourcePath}' to '{destAbs}': {ex.Message}");
+                return false;
+            }
             _log.AppendTimestamped($"Copied → {installPath}");
+            return true;
         }
 
         private void FinalizeInstall()

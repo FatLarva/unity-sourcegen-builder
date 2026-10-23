@@ -41,7 +41,9 @@ When replacing the original `com.sourcegenbuilder.editor` package, remove that p
 
 Each profile describes one generator/analyzer and its dependencies:
 
-Paths refer to physical files on disk. **Source Root** is relative to the Unity project root, and **Csproj Path** is relative to Source Root. When sources belong to an external or Git-installed package, use its actual folder on disk; Unity's virtual `Packages/<package-id>` paths are not resolved by the builder.
+**Source Root** is relative to the Unity project root, and **Csproj Path** is relative to Source Root. For sources in a UPM package, use `Packages/<package-id>/<source-folder>`: the builder resolves that logical path to the installed package's physical directory, including packages installed from Git URLs or local folders. Embedded packages and Git submodules work with the same profile. Ordinary project-relative paths, including `../` paths to external checkouts, also work.
+
+The resolved source directory is shown in the build log; profiles keep the logical path, so no cache path or commit hash needs to be entered manually. Install DLL paths under `Packages/<package-id>/...` are resolved in the same way, while Unity importer paths remain logical asset paths. The target directory must be writable.
 
 - **Source Root**: working directory for `dotnet build`, relative to Unity project root
 - **Extra Build Args**: optional arguments appended to the `dotnet build` command
