@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.0.1] - 2026-10-23
+
+### Fixed
+- Prefer the current Unity Editor's bundled .NET SDK, falling back to SDKs on PATH
+- Probe SDK availability with bounded `dotnet --list-sdks` checks instead of accepting a runtime-only host
+- Log the selected SDK path and actionable setup instructions when no SDK is available
+- Include the executable and working directory in process launch errors
+
 ## [1.0.0] - 2026-03-16
 
 ### Added

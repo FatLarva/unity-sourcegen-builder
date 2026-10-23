@@ -22,6 +22,7 @@ namespace SourceGenBuilder.Editor
         // ── State ───────────────────────────────────────────────────────
 
         private Process _activeProcess;
+        private string _dotnetExecutable;
         private StringBuilder _stdOutput;
         private StringBuilder _errOutput;
         private string _lastLine;
@@ -50,8 +51,8 @@ namespace SourceGenBuilder.Editor
         }
 
         /// <summary>
-        /// Fired when the entire build sequence completes (success or failure)
-        /// or is cancelled. The bool indicates success.
+        /// Fired when the entire build sequence completes (success or failure).
+        /// Cancellation does not fire this event. The bool indicates success.
         /// </summary>
         public event Action<bool> BuildFinished;
 
@@ -169,6 +170,18 @@ namespace SourceGenBuilder.Editor
             }
 
             _log.Rotate();
+            if (!DotNetSdkResolver.TryResolve(EditorApplication.applicationContentsPath, projectRoot,
+                    out var sdk, out string diagnostics))
+            {
+                _log.AppendTimestamped("ERROR: " + diagnostics);
+                _buildQueue = null;
+                _firstTimeInstalls = null;
+                return false;
+            }
+
+            if (!string.IsNullOrEmpty(diagnostics)) _log.AppendTimestamped(diagnostics);
+            _dotnetExecutable = sdk.ExecutablePath;
+            _log.AppendTimestamped($"Using .NET SDK from {sdk.Source}: {_dotnetExecutable}\n  Available SDKs: {sdk.Versions}");
             _buildIndex = 0;
             IsBuilding = true;
 
@@ -289,7 +302,7 @@ namespace SourceGenBuilder.Editor
 
             ProcessStartInfo psi = new()
             {
-                FileName = "dotnet",
+                FileName = _dotnetExecutable,
                 Arguments = args,
                 WorkingDirectory = workDir,
                 RedirectStandardOutput = true,
@@ -307,7 +320,7 @@ namespace SourceGenBuilder.Editor
             }
             catch (Exception ex)
             {
-                _log.AppendTimestamped($"ERROR: Failed to start 'dotnet'. Is the .NET SDK installed and on PATH?\n  {ex.Message}");
+                _log.AppendTimestamped($"ERROR: Failed to start the SDK host '{_dotnetExecutable}'.\n  Working directory: {workDir}\n  {ex.Message}");
                 _activeProcess = null;
                 Finish(false);
                 return;
@@ -315,7 +328,7 @@ namespace SourceGenBuilder.Editor
 
             if (_activeProcess == null)
             {
-                _log.AppendTimestamped("ERROR: Failed to start 'dotnet'. Process is null.");
+                _log.AppendTimestamped($"ERROR: SDK host '{_dotnetExecutable}' did not return a process. Working directory: {workDir}");
                 Finish(false);
                 return;
             }
@@ -492,6 +505,7 @@ namespace SourceGenBuilder.Editor
             }
 
             _stdOutput = null;
+            _dotnetExecutable = null;
             _errOutput = null;
             _lastLine = null;
             IsBuilding = false;

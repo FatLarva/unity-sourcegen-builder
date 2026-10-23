@@ -1,6 +1,6 @@
 {
   "name": "com.fatlarva.sourcegenbuilder",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "displayName": "Source Gen Builder",
   "description": "Build and install Roslyn source generators and analyzers directly from the Unity Editor.",
   "unity": "2021.3",

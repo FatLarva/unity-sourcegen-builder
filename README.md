@@ -5,7 +5,11 @@ Build and install Roslyn source generators and analyzers directly from the Unity
 ## Requirements
 
 - Unity 2021.3+
-- .NET SDK installed and available on PATH (`dotnet` command)
+- A .NET SDK, either bundled with the current Unity Editor or installed on PATH
+
+The builder first checks the current Editor's `DotNetSdk` directory, then `dotnet` installations on the Editor's PATH. Each candidate must report an installed SDK through `--list-sdks`; a runtime-only installation is insufficient. Older Editor installations may require a separate SDK from [Microsoft](https://dotnet.microsoft.com/download).
+
+The build log shows the selected executable and available SDK versions. If no SDK is usable, it lists the failed checks and setup instructions. After installing an SDK or changing PATH, restart Unity and its launching Unity Hub to refresh their environment. A generator's `global.json` or target framework can require a specific SDK version even when another SDK is available.
 
 ## Installation
 
