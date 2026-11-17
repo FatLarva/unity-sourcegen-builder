@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+### Fixed
+- Decode redirected build output and errors as UTF-8 so localized .NET messages display correctly on Windows.
+
 ## [1.0.2] - 2026-10-24
 
 ### Fixed
